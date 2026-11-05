@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RC5 part 5 - PLAYTOEIC</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: #ffeef2; /* Tông nền hồng đào nhạt */
+            color: #1a1a1a; /* Tông đen nhã nhặn */
+	padding: 0;                     /* Sửa lại thành 0 để không bị lệch khung */
+    	display: flex;
+    	justify-content: center;
+    	overflow: hidden;               /* Khóa cuộn trang chính, chỉ cuộn quiz-container */
+	}
+        /* Canvas phủ màn hình */
+        #drawing-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 999;
+            pointer-events: none;
+            cursor: default;
+        }
+
+        #drawing-canvas.active {
+            pointer-events: auto;
+            cursor: crosshair;
+        }
+
+        /* Thanh công cụ thu nhỏ */
+        .draw-toolbar {
+            position: fixed;
+            top: auto;
+    bottom: 20px;
+    left: 20px; /* Đặt vị trí mặc định ban đầu ở góc dưới bên trái */
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(4px);
+            padding: 4px 10px;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            z-index: 1000;
+            border: 1px solid #ff94a8;
+	/* THÊM 2 DÒNG NÀY: Hiển thị con trỏ nắm kéo & chặn cuộn trang khi chạm thanh công cụ */
+    cursor: move;
+    touch-action: none;
+        }
+
+        .tool-btn {
+            background: #222;
+            color: #fff;
+            border: 1px solid #444;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 7px;
+            font-weight: 200;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .tool-btn:hover { background: #333; }
+        .tool-btn.active { background: #ff94a8; color: #000; border-color: #ff94a8; }
+
+        .color-picker-group {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+            border-left: 1px solid #444;
+            border-right: 1px solid #444;
+            padding: 0 6px;
+        }
+
+        .color-dot {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 1.5px solid transparent;
+            transition: transform 0.15s;
+        }
+
+        .color-dot.selected { border-color: #fff; transform: scale(1.2); }
+
+        .size-select {
+            background: #222;
+            color: #fff;
+            border: 1px solid #444;
+            padding: 3px 6px;
+            border-radius: 8px;
+            font-size: 11px;
+            outline: none;
+            cursor: pointer;
+        }
+
+
+        .quiz-container {
+            max-width: 850px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+
+	/* THÊM 3 DÒNG NÀY ĐỂ KÍCH HOẠT SCROLL SNAP */
+    	height: 100vh;                   /* Bắt buộc có chiều cao bằng màn hình */
+    	overflow-y: auto;                /* Cho phép cuộn bên trong danh sách */
+    	scroll-snap-type: y mandatory;   /* Bắt buộc tự động nhảy đúng từng mục */
+    	padding-bottom: 50vh;            /* Khoảng trống để cuộn thoải mái ở câu cuối */
+	scroll-padding-top: 10px;
+        }
+
+        .quiz-header {
+            text-align: center;
+            background: #000000;
+            color: #ffb7c5; /* Hồng đào sáng trên nền đen */
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .quiz-header h1 {
+            font-size: 24px;
+            letter-spacing: 0.5px;
+        }
+
+        /* Card câu hỏi */
+        .question-card {
+            background: #ffffff;
+            border-radius: 14px;
+            padding: 24px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+            border: 1px solid #ffd1dc;
+
+	/* THÊM DÒNG NÀY: Giúp card tự nhảy vào đúng chính giữa màn hình khi cuộn */
+    	scroll-snap-align: start;
+    	flex-shrink: 0;                  /* Giữ nguyên kích thước card không bị co lại */
+        }
+
+        /* Tiêu đề & Nội dung câu hỏi */
+        .question-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            margin-bottom: 20px;
+        }
+
+        .question-number {
+            background-color: #1877f2; /* Hồng đào đậm */
+            color: #ffffff;
+            font-weight: bold;
+            border-radius: 50%;
+            min-width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+
+        .question-text {
+            font-size: 17px;
+            font-weight: 600;
+            line-height: 3;
+            color: #1a1a1a;
+            padding-top: 6px;
+        }
+
+        /* Lưới lựa chọn (2 cột) */
+        .options-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        @media (max-width: 600px) {
+            .options-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .option-btn {
+            background-color: #ffffff;
+            border: 1.5px solid #ffccd5;
+            border-radius: 10px;
+            padding: 10px 12px;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+            text-align: left;
+            font-size: 15px;
+            color: #333333;
+        }
+
+        .option-btn:hover:not(.disabled) {
+            background-color: #fff0f3;
+            border-color: #ff94a8;
+        }
+
+        .option-label {
+            background-color: #f0f0f0;
+            color: #333333;
+            font-weight: bold;
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 12px;
+            flex-shrink: 0;
+            font-size: 14px;
+        }
+
+        .option-text {
+            flex-grow: 1;
+            font-weight: 600;
+        }
+
+        .status-icon {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            color: #ffffff;
+            margin-left: 8px;
+            font-weight: bold;
+        }
+
+        /* Trạng thái ĐÚNG */
+        .option-btn.correct {
+            border-color: #2e7d32 !important;
+            background-color: #ffffff !important;
+        }
+
+        .option-btn.correct .option-label {
+            background-color: #4caf50;
+            color: #fff;
+        }
+
+        .option-btn.correct .status-icon {
+            background-color: #4caf50;
+        }
+
+        .option-btn.correct .status-icon::after {
+            content: "✓";
+        }
+
+        /* Trạng thái SAI */
+        .option-btn.incorrect {
+            border-color: #d32f2f !important;
+            background-color: #ffffff !important;
+        }
+
+        .option-btn.incorrect .option-label {
+            background-color: #f44336;
+            color: #fff;
+        }
+
+        .option-btn.incorrect .status-icon {
+            background-color: #f44336;
+        }
+
+        .option-btn.incorrect .status-icon::after {
+            content: "✕";
+        }
+
+        .option-btn.disabled {
+            cursor: default;
+        }
+
+        /* Phần giải thích */
+        .explanation-box {
+            display: none;
+            margin-top: 18px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .short-note {
+            font-size: 15px;
+            font-weight: 600;
+            color: #000000;
+            margin-bottom: 8px;
+            padding-left: 4px;
+        }
+
+        .translation-card {
+            background-color: #fff5f7;
+            border-left: 4px solid #ff94a8;
+            border-radius: 6px;
+            padding: 14px 16px;
+            font-size: 15px;
+            line-height: 1.6;
+            color: #222222;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Thẻ Canvas lớp vẽ phủ ngoài -->
+<canvas id="drawing-canvas"></canvas>
+
+<!-- Thanh công cụ thu nhỏ -->
+<div class="draw-toolbar">
+    <button class="tool-btn" id="toggle-draw-btn" onclick="toggleDrawingMode()">✏️ Vẽ</button>
+    
+    <div class="color-picker-group">
+        <div class="color-dot selected" style="background-color: #ff334b;" onclick="setColor('#ff334b', this)"></div>
+        <div class="color-dot" style="background-color: #00e676;" onclick="setColor('#00e676', this)"></div>
+        <div class="color-dot" style="background-color: #2196f3;" onclick="setColor('#2196f3', this)"></div>
+        <div class="color-dot" style="background-color: #ffeb3b;" onclick="setColor('#ffeb3b', this)"></div>
+        <div class="color-dot" style="background-color: #000000; border: 1px solid #fff;" onclick="setColor('#000000', this)"></div>
+    </div>
+
+    <select class="size-select" id="brush-size" onchange="setBrushSize(this.value)">
+        <option value="2" selected>Nét nhỏ</option>
+        <option value="4">Nét vừa</option>
+        <option value="8">Nét dày</option>
+    </select>
+
+    <button class="tool-btn" id="eraser-btn" onclick="setEraser()">🧹</button>
+    <button class="tool-btn" onclick="undoLastStroke()">↩️</button>
+    <button class="tool-btn" onclick="clearCanvas()">🗑️ Xóa</button>
+</div>
+
+<div class="quiz-container">
+    <div class="quiz-header">
+        <h1>RC5PART5 - PLAYTOEIC</h1>
+    </div>
+    
+    <div id="quiz-content"></div>
+</div>
+
+<script>
+    // ========================================================
+    // DỮ LIỆU CÂU HỎI HOÀN CHỈNH (CÂU 111 - 150)
+    // ========================================================
+    const quizData = [
+  {
+    id: 101,
+    question: "Mr. Chol who recently joined the advisory board, is an experienced accountant _____.",
+    options: [
+      { id: "A", text: "but" },
+      { id: "B", text: "that" },
+      { id: "C", text: "and" },
+      { id: "D", text: "yet" }
+    ],
+    correct: "C",
+    shortNote: "Cần một liên từ để nối hai mệnh đề độc lập hoặc hai cụm từ bổ nghĩa song song[cite: 33].",
+    explanation: "Ông Choi, người mới gia nhập hội đồng cố vấn gần đây, là một kế toán viên giàu kinh nghiệm và là một diễn giả[cite: 33]."
+  },
+  {
+    id: 102,
+    question: "The first 150 visitors to the new fitness park will each receive a complimentary free water _____.",
+    options: [
+      { id: "A", text: "bottle" },
+      { id: "B", text: "bottled" },
+      { id: "C", text: "bottling" },
+      { id: "D", text: "to bottle" }
+    ],
+    correct: "A",
+    shortNote: "Cụm danh từ cố định 'water bottle' (chai nước)[cite: 33].",
+    explanation: "150 du khách đầu tiên đến công viên thể hình mới sẽ nhận được một chai nước miễn phí[cite: 33]."
+  },
+  {
+    id: 103,
+    question: "Operating instructions for the printer will be e-mailed to employees _____.",
+    options: [
+      { id: "A", text: "short" },
+      { id: "B", text: "shortly" },
+      { id: "C", text: "shorter" },
+      { id: "D", text: "shortening" }
+    ],
+    correct: "B",
+    shortNote: "Trạng từ 'shortly' (sớm / trong thời gian ngắn tới) đứng cuối câu bổ nghĩa cho động từ bị động[cite: 33].",
+    explanation: "Hướng dẫn vận hành máy in sẽ sớm được gửi qua email cho các nhân viên[cite: 33]."
+  },
+  {
+    id: 104,
+    question: "Ms. Lim's best-selling novel has been praised _____.",
+    options: [
+      { id: "A", text: "respectively" },
+      { id: "B", text: "tightly" },
+      { id: "C", text: "unhappily" },
+      { id: "D", text: "widely" }
+    ],
+    correct: "D",
+    shortNote: "Trạng từ 'widely' đi với động từ phân từ 'praised' tạo thành cụm 'widely praised' (được ca ngợi rộng rãi)[cite: 33].",
+    explanation: "Cuốn tiểu thuyết bán chạy nhất của cô Lim đã được ca ngợi rộng rãi[cite: 33]."
+  },
+  {
+    id: 105,
+    question: "Dozens of customers have posted positive reviews of Stellenbosch Cycle Works, _____ it to accommodate the largest cargo ships.",
+    options: [
+      { id: "A", text: "satisfies" },
+      { id: "B", text: "acting" },
+      { id: "C", text: "action" },
+      { id: "D", text: "actively" }
+    ],
+    correct: "A",
+    shortNote: "Động từ chia ở thì hiện tại đơn dạng chủ động 'satisfies' tương ứng với chủ ngữ số ít/mệnh đề phía trước[cite: 33].",
+    explanation: "Hàng chục khách hàng đã đăng những đánh giá tích cực về Stellenbosch Cycle Works, điều này làm hài lòng ông chủ[cite: 33]."
+  },
+  {
+    id: 106,
+    question: "The marketing manager, Ms. Abyola, plans to meet with the press following _____ meeting with the vice president.",
+    options: [
+      { id: "A", text: "her" },
+      { id: "B", text: "she" },
+      { id: "C", text: "hers" },
+      { id: "D", text: "herself" }
+    ],
+    correct: "A",
+    shortNote: "Tính từ sở hữu 'her' đứng trước danh từ 'meeting' để chỉ cuộc họp của cô ấy[cite: 33].",
+    explanation: "Giám đốc tiếp thị, cô Abiyola, dự định gặp gỡ báo chí sau cuộc họp của cô ấy với phó chủ tịch[cite: 33]."
+  },
+  {
+    id: 107,
+    question: "Last weekend, Terrville Community Center held a _____ game night for neighborhood children.",
+    options: [
+      { id: "A", text: "removable" },
+      { id: "B", text: "plentiful" },
+      { id: "C", text: "lively" },
+      { id: "D", text: "current" }
+    ],
+    correct: "C",
+    shortNote: "Tính từ 'lively' (sống động, nhộn nhịp) đứng trước danh từ 'game night'[cite: 33].",
+    explanation: "Cuối tuần trước, Trung tâm Cộng đồng Terrville đã tổ chức một đêm trò chơi nhộn nhịp cho trẻ em trong xóm[cite: 33]."
+  },
+  {
+    id: 108,
+    question: "Mr. Lenth will distribute _____ of the workshop agenda to all managers by Tuesday morning.",
+    options: [
+      { id: "A", text: "copies" },
+      { id: "B", text: "copier" },
+      { id: "C", text: "copy" },
+      { id: "D", text: "copying" }
+    ],
+    correct: "A",
+    shortNote: "Danh từ số nhiều đếm được 'copies' đứng sau động từ 'distribute'[cite: 33].",
+    explanation: "Ông Lenth sẽ phân phát các bản sao chương trình nghị sự của buổi hội thảo cho tất cả các quản lý trước sáng thứ Ba[cite: 33]."
+  },
+  {
+    id: 109,
+    question: "Employees are eligible for more vacation time _____ they have been employed for five years.",
+    options: [
+      { id: "A", text: "after" },
+      { id: "B", text: "neither" },
+      { id: "C", text: "also" },
+      { id: "D", text: "thus" }
+    ],
+    correct: "A",
+    shortNote: "Liên từ chỉ thời gian 'after' (sau khi) nối hai mệnh đề[cite: 33].",
+    explanation: "Nhân viên đủ điều kiện nhận thêm thời gian nghỉ phép sau khi họ đã làm việc được năm năm[cite: 33]."
+  },
+  {
+    id: 110,
+    question: "Managers at Afion Accounting are urged to provide feedback to employees on a regular _____.",
+    options: [
+      { id: "A", text: "construct" },
+      { id: "B", text: "constructor" },
+      { id: "C", text: "constructive" },
+      { id: "D", text: "construction" }
+    ],
+    correct: "C",
+    shortNote: "Cụm tính từ + danh từ 'constructive feedback' (phản hồi mang tính xây dựng)[cite: 33].",
+    explanation: "Các quản lý tại Afion Accounting được khuyến khích cung cấp phản hồi mang tính xây dựng cho nhân viên một cách thường xuyên[cite: 33]."
+  },
+  {
+    id: 111,
+    question: "Many farmers markets operate on a seasonal _____, opening in spring and closing in late autumn.",
+    options: [
+      { id: "A", text: "topic" },
+      { id: "B", text: "basis" },
+      { id: "C", text: "root" },
+      { id: "D", text: "sum" }
+    ],
+    correct: "B",
+    shortNote: "Cụm từ cố định 'on a seasonal basis' (theo cơ sở mùa vụ / theo mùa)[cite: 33].",
+    explanation: "Nhiều chợ nông sản hoạt động theo mùa, mở cửa vào mùa xuân và đóng cửa vào cuối mùa thu[cite: 33]."
+  },
+  {
+    id: 112,
+    question: "The _____ in the housing market has continued to drag down real estate profits.",
+    options: [
+      { id: "A", text: "weak" },
+      { id: "B", text: "weakly" },
+      { id: "C", text: "weakness" },
+      { id: "D", text: "weakened" }
+    ],
+    correct: "C",
+    shortNote: "Danh từ 'weakness' (sự yếu kém) đóng vai trò làm chủ ngữ trong câu[cite: 33].",
+    explanation: "Sự suy yếu của thị trường nhà ở tiếp tục kéo giảm lợi nhuận của ngành bất động sản[cite: 33]."
+  },
+  {
+    id: 113,
+    question: "The sudden merger of Alvy Brothers and Crawford Enterprises _____ most financial analysts.",
+    options: [
+      { id: "A", text: "enabled" },
+      { id: "B", text: "arranged" },
+      { id: "C", text: "surprised" },
+      { id: "D", text: "suspected" }
+    ],
+    correct: "C",
+    shortNote: "Động từ 'surprised' (làm ngạc nhiên) chia ở thì quá khứ đơn hợp nghĩa với chủ ngữ 'merger'[cite: 33].",
+    explanation: "Việc sáp nhập đột ngột giữa Alvy Brothers và Crawford Enterprises đã làm hầu hết các nhà phân tích tài chính ngạc nhiên[cite: 33]."
+  },
+  {
+    id: 114,
+    question: "Of all the mistakes people make in the office, not proofreading their e-mails is one of the _____.",
+    options: [
+      { id: "A", text: "commoner" },
+      { id: "B", text: "most common" },
+      { id: "C", text: "in common" },
+      { id: "D", text: "more commonly" }
+    ],
+    correct: "B",
+    shortNote: "Cấu trúc so sánh nhất: 'one of the + most common + N số nhiều' (một trong những cái phổ biến nhất)[cite: 33].",
+    explanation: "Trong số tất cả các lỗi mà mọi người mắc phải ở văn phòng, không đọc rà soát lại email là một trong những lỗi phổ biến nhất[cite: 33]."
+  },
+  {
+    id: 115,
+    question: "Gayfair Global's mission is to transport and deliver client goods in a _____ manner.",
+    options: [
+      { id: "A", text: "prompt" },
+      { id: "B", text: "primary" },
+      { id: "C", text: "bright" },
+      { id: "D", text: "nearest" }
+    ],
+    correct: "A",
+    shortNote: "Tính từ 'prompt' (nhanh chóng, kịp thời) đi với danh từ 'manner' tạo thành cụm từ cố định[cite: 33].",
+    explanation: "Sứ mệnh của Gayfair Global là vận chuyển và giao hàng hóa của khách hàng một cách nhanh chóng và kịp thời[cite: 33]."
+  },
+  {
+    id: 116,
+    question: "The department supervisor is _____ for ensuring that all safety gear is stowed properly at the end of the shift.",
+    options: [
+      { id: "A", text: "responsibilities" },
+      { id: "B", text: "responsibility" },
+      { id: "C", text: "responsibly" },
+      { id: "D", text: "responsible" }
+    ],
+    correct: "D",
+    shortNote: "Cấu trúc tính từ: 'be responsible for + V-ing' (chịu trách nhiệm cho việc gì)[cite: 33].",
+    explanation: "Giám sát viên phòng ban chịu trách nhiệm đảm bảo rằng tất cả thiết bị an toàn được cất giữ đúng cách vào cuối ca làm việc[cite: 33]."
+  },
+  {
+    id: 117,
+    question: "A three year project deepened the _____, allowing it to accommodate the largest cargo ships.",
+    options: [
+      { id: "A", text: "side" },
+      { id: "B", text: "boat" },
+      { id: "C", text: "harbor" },
+      { id: "D", text: "island" }
+    ],
+    correct: "C",
+    shortNote: "Danh từ 'harbor' (cảng biển) phù hợp với ngữ cảnh làm sâu đáy để đón tàu chở hàng lớn[cite: 33].",
+    explanation: "Một dự án kéo dài 3 năm đã nạo vét sâu thêm cảng biển, cho phép nó tiếp nhận những con tàu chở hàng lớn nhất[cite: 33]."
+  },
+  {
+    id: 118,
+    question: "The experiment's initial results were _____ different from what was expected.",
+    options: [
+      { id: "A", text: "wild" },
+      { id: "B", text: "widest" },
+      { id: "C", text: "wildly" },
+      { id: "D", text: "wilderness" }
+    ],
+    correct: "C",
+    shortNote: "Trạng từ 'wildly' bổ nghĩa cho tính từ 'different' (wildly different: khác biệt hoàn toàn)[cite: 33].",
+    explanation: "Kết quả ban đầu của thí nghiệm khác xa hoàn toàn so với những gì đã kỳ vọng[cite: 33]."
+  },
+  {
+    id: 119,
+    question: "_____ critical reviews, the movie was a great success at the box office.",
+    options: [
+      { id: "A", text: "During" },
+      { id: "B", text: "About" },
+      { id: "C", text: "Despite" },
+      { id: "D", text: "Over" }
+    ],
+    correct: "C",
+    shortNote: "Giới từ chỉ sự nhượng bộ 'Despite' + cụm danh từ (Mặc dù...)[cite: 33].",
+    explanation: "Mặc dù nhận được những đánh giá phê bình gay gắt, bộ phim vẫn đạt thành công lớn tại phòng vé[cite: 33]."
+  },
+  {
+    id: 120,
+    question: "The spray-on sealant _____ a protective layer that keeps your tiles from getting scratched.",
+    options: [
+      { id: "A", text: "acts" },
+      { id: "B", text: "acting" },
+      { id: "C", text: "action" },
+      { id: "D", text: "actively" }
+    ],
+    correct: "A",
+    shortNote: "Động từ 'acts' chia ở thì hiện tại đơn dạng chủ động, kết hợp với 'as' (hoặc đóng vai trò là)[cite: 33].",
+    explanation: "Chất trám dạng phun đóng vai trò như một lớp bảo vệ giữ cho gạch của bạn không bị trầy xước[cite: 33]."
+  },
+  {
+    id: 121,
+    question: "The contract for the renovation of the park will not be awarded _____ bids have been submitted.",
+    options: [
+      { id: "A", text: "since" },
+      { id: "B", text: "nor" },
+      { id: "C", text: "until" },
+      { id: "D", text: "because" }
+    ],
+    correct: "C",
+    shortNote: "Liên từ chỉ thời gian 'until' (cho đến khi) dùng trong cấu trúc phủ định 'will not... until...'[cite: 33].",
+    explanation: "Hợp đồng cải tạo công viên sẽ không được trao cho đến khi tất cả các hồ sơ dự thầu được nộp[cite: 33]."
+  },
+  {
+    id: 122,
+    question: "A recent study showed that substituting the refined sugars with maple syrup may have some important _____ benefits.",
+    options: [
+      { id: "A", text: "only" },
+      { id: "B", text: "full" },
+      { id: "C", text: "legal" },
+      { id: "D", text: "health" }
+    ],
+    correct: "D",
+    shortNote: "Cụm danh từ ghép 'health benefits' (lợi ích sức khỏe)[cite: 33].",
+    explanation: "Một nghiên cứu gần đây chỉ ra rằng việc thay thế đường tinh luyện bằng siro cây phong có thể mang lại một số lợi ích sức khỏe quan trọng[cite: 33]."
+  },
+  {
+    id: 123,
+    question: "Margie Fung was _____ the winners at Sternetz Institute's art competition.",
+    options: [
+      { id: "A", text: "from" },
+      { id: "B", text: "upon" },
+      { id: "C", text: "among" },
+      { id: "D", text: "beyond" }
+    ],
+    correct: "C",
+    shortNote: "Giới từ 'among' (nằm trong số) đi với danh từ số nhiều 'winners'[cite: 33].",
+    explanation: "Margie Fung nằm trong số những người thắng cuộc tại cuộc thi nghệ thuật của Viện Sternetz[cite: 33]."
+  },
+  {
+    id: 124,
+    question: "Posting updates too infrequently on social media can cause small businesses _____ by their customers.",
+    options: [
+      { id: "A", text: "forgets" },
+      { id: "B", text: "to forget" },
+      { id: "C", text: "been forgotten" },
+      { id: "D", text: "to be forgotten" }
+    ],
+    correct: "D",
+    shortNote: "Cấu trúc: 'cause sb/sth + to be V3/ed' ở dạng bị động[cite: 33].",
+    explanation: "Đăng cập nhật quá thưa thớt trên mạng xã hội có thể khiến các doanh nghiệp nhỏ bị khách hàng lãng quên[cite: 33]."
+  },
+  {
+    id: 125,
+    question: "Ideal for conference rooms, our soundproof panes have been specially designed to _____ unwanted background noise.",
+    options: [
+      { id: "A", text: "compete" },
+      { id: "B", text: "absorb" },
+      { id: "C", text: "surpass" },
+      { id: "D", text: "remain" }
+    ],
+    correct: "B",
+    shortNote: "Động từ 'absorb' (hấp thụ, triệt tiêu) phù hợp khi kết hợp với tiếng ồn 'background noise'[cite: 33].",
+    explanation: "Lý tưởng cho các phòng họp, các tấm cách âm của chúng tôi đã được thiết kế đặc biệt để triệt tiêu tiếng ồn nền không mong muốn[cite: 33]."
+  },
+  {
+    id: 126,
+    question: "Mr. Sato will call into the meeting _____ the hotel's wireless network.",
+    options: [
+      { id: "A", text: "used" },
+      { id: "B", text: "using" },
+      { id: "C", text: "use" },
+      { id: "D", text: "had used" }
+    ],
+    correct: "B",
+    shortNote: "Rút gọn mệnh đề quan hệ dạng chủ động (phân từ hiện tại V-ing): 'using'[cite: 33].",
+    explanation: "Ông Sato sẽ gọi vào cuộc họp bằng cách sử dụng mạng không dây của khách sạn[cite: 33]."
+  },
+  {
+    id: 127,
+    question: "Not only has Mr. Oghu worked on the project, but he has also trained Ms. Jeong to continue the work _____.",
+    options: [
+      { id: "A", text: "accessibly" },
+      { id: "B", text: "diligently" },
+      { id: "C", text: "eventfully" },
+      { id: "D", text: "completely" }
+    ],
+    correct: "D",
+    shortNote: "Trạng từ 'completely' (hoàn toàn, trọn vẹn) bổ nghĩa cho hành động đào tạo tiếp tục công việc[cite: 33].",
+    explanation: "Không chỉ làm việc trong dự án, ông Oghu còn đào tạo cô Jeong một cách trọn vẹn để tiếp tục công việc[cite: 33]."
+  },
+  {
+    id: 128,
+    question: "Belker Auto offers a ten-year warranty for _____ who want greater peace of mind.",
+    options: [
+      { id: "A", text: "that" },
+      { id: "B", text: "those" },
+      { id: "C", text: "somebody" },
+      { id: "D", text: "everyone" }
+    ],
+    correct: "B",
+    shortNote: "Cụm đại từ chỉ người 'those who' (những ai / những người mà)[cite: 33].",
+    explanation: "Belker Auto cung cấp gói bảo hành 10 năm cho những ai muốn có sự an tâm lớn hơn[cite: 33]."
+  },
+  {
+    id: 129,
+    question: "After months of planning, the Lanton Bookstore school reading program will finally _____ in October.",
+    options: [
+      { id: "A", text: "observe" },
+      { id: "B", text: "represent" },
+      { id: "C", text: "commence" },
+      { id: "D", text: "access" }
+    ],
+    correct: "C",
+    shortNote: "Động từ 'commence' (bắt đầu, khởi động) đi với chương trình sự kiện[cite: 33].",
+    explanation: "Sau nhiều tháng lập kế hoạch, chương trình đọc sách trường học của Hiệu sách Lanton cuối cùng sẽ bắt đầu vào tháng 10[cite: 33]."
+  },
+  {
+    id: 130,
+    question: "Independent consultants can be a valuable source of advice to new entrepreneurs _____.",
+    options: [
+      { id: "A", text: "unfulfilled" },
+      { id: "B", text: "indefinite" },
+      { id: "C", text: "obedient" },
+      { id: "D", text: "impartial" }
+    ],
+    correct: "D",
+    shortNote: "Tính từ 'impartial' (khách quan, không thiên vị) phù hợp khi bổ nghĩa cho nguồn lời khuyên 'advice'[cite: 33].",
+    explanation: "Các cố vấn độc lập có thể là một nguồn lời khuyên khách quan có giá trị đối với các doanh nhân mới[cite: 33]."
+  }
+];
+
+    // LOGIC QUIZ
+    function renderQuiz() {
+        const container = document.getElementById('quiz-content');
+        container.innerHTML = '';
+
+        quizData.forEach((q, index) => {
+            const card = document.createElement('div');
+            card.className = 'question-card';
+
+            card.innerHTML = `
+                <div class="question-header">
+                    <div class="question-number">${q.id}</div>
+                    <div class="question-text">${q.question}</div>
+                </div>
+                
+                <div class="options-grid">
+                    ${q.options.map(opt => `
+                        <button class="option-btn" onclick="checkAnswer(${index}, '${opt.id}')" data-id="${opt.id}">
+                            <span class="option-label">${opt.id}</span>
+                            <span class="option-text">${opt.text}</span>
+                            <span class="status-icon-holder"></span>
+                        </button>
+                    `).join('')}
+                </div>
+
+                <div class="explanation-box">
+                    <div class="short-note">💡 ${q.shortNote}</div>
+                    <div class="translation-card"><b>Dịch nghĩa:</b> ${q.explanation}</div>
+                </div>
+            `;
+
+            container.appendChild(card);
+        });
+    }
+
+    function checkAnswer(questionIndex, selectedId) {
+        const qData = quizData[questionIndex];
+        const card = document.getElementsByClassName('question-card')[questionIndex];
+        const buttons = card.querySelectorAll('.option-btn');
+        const explainBox = card.querySelector('.explanation-box');
+
+        buttons.forEach(btn => {
+            btn.classList.add('disabled');
+            btn.onclick = null;
+
+            const btnId = btn.getAttribute('data-id');
+            const iconHolder = btn.querySelector('.status-icon-holder');
+
+            if (btnId === qData.correct) {
+                btn.classList.add('correct');
+                iconHolder.innerHTML = `<span class="status-icon"></span>`;
+            }
+
+            if (btnId === selectedId && selectedId !== qData.correct) {
+                btn.classList.add('incorrect');
+                iconHolder.innerHTML = `<span class="status-icon"></span>`;
+            }
+        });
+
+        explainBox.style.display = 'block';
+    }
+
+    // LOGIC BÚT VẼ & UNDO
+    const canvas = document.getElementById('drawing-canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let isDrawingMode = false;
+    let isPainting = false;
+    let currentColor = '#ff334b';
+    let currentLineWidth = 2;
+    let isEraser = false;
+
+    let strokes = [];
+    let currentStroke = null;
+    let holdTimer = null;         // Timer đếm thời gian giữ tay
+    let isSnapStraight = false;   // Cờ đánh dấu đã chuyển thành đường thẳng
+
+function resizeCanvas() {
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = window.innerWidth * dpr;
+    canvas.height = window.innerHeight * dpr;
+    
+    // Giữ nguyên kích thước hiển thị CSS
+    canvas.style.width = window.innerWidth + 'px';
+    canvas.style.height = window.innerHeight + 'px';
+    
+    // Scale ngữ cảnh vẽ theo DPR để đường nét sắc nét
+    ctx.scale(dpr, dpr);
+    redrawCanvas();
+}
+
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function toggleDrawingMode() {
+        isDrawingMode = !isDrawingMode;
+        const btn = document.getElementById('toggle-draw-btn');
+        if (isDrawingMode) {
+            canvas.classList.add('active');
+            btn.classList.add('active');
+            btn.innerHTML = '🛑 Tắt';
+        } else {
+            canvas.classList.remove('active');
+            btn.classList.remove('active');
+            btn.innerHTML = '✏️ Vẽ';
+        }
+    }
+
+    function setColor(color, element) {
+        isEraser = false;
+        currentColor = color;
+        document.getElementById('eraser-btn').classList.remove('active');
+        
+        document.querySelectorAll('.color-dot').forEach(dot => dot.classList.remove('selected'));
+        if (element) element.classList.add('selected');
+    }
+
+    function setBrushSize(size) {
+        currentLineWidth = parseInt(document.getElementById('brush-size').value, 10);
+    }
+
+    function setEraser() {
+        isEraser = true;
+        document.getElementById('eraser-btn').classList.add('active');
+        document.querySelectorAll('.color-dot').forEach(dot => dot.classList.remove('selected'));
+    }
+
+    function redrawCanvas() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        strokes.forEach(stroke => {
+            if (stroke.points.length < 1) return;
+
+            ctx.beginPath();
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            if (stroke.isEraser) {
+                ctx.globalCompositeOperation = 'destination-out';
+                ctx.lineWidth = stroke.width * 4;
+            } else {
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.strokeStyle = stroke.color;
+                ctx.lineWidth = stroke.width;
+            }
+
+            ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+            for (let i = 1; i < stroke.points.length; i++) {
+                ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
+            }
+            ctx.stroke();
+        });
+
+        ctx.globalCompositeOperation = 'source-over';
+    }
+
+    function undoLastStroke() {
+        strokes.pop();
+        redrawCanvas();
+    }
+
+    function clearCanvas() {
+        strokes = [];
+        redrawCanvas();
+    }
+
+    function getPos(e) {
+        if (e.touches && e.touches.length > 0) {
+            return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        }
+        return { x: e.clientX, y: e.clientY };
+    }
+
+function startPosition(e) {
+    if (!isDrawingMode) return;
+    isPainting = true;
+    isSnapStraight = false;
+
+    const pos = getPos(e);
+    currentStroke = {
+        color: currentColor,
+        width: currentLineWidth,
+        isEraser: isEraser,
+        points: [pos],
+        rawPoints: [pos] // Lưu lại đường nét gốc ban đầu
+    };
+    strokes.push(currentStroke);
+    
+    // Bắt đầu đếm thời gian giữ yên
+    resetHoldTimer();
+    draw(e);
+}
+
+function finishedPosition() {
+    if (!isPainting) return;
+    isPainting = false;
+    clearTimeout(holdTimer); // Hủy đếm giờ khi buông tay
+    ctx.beginPath();
+}
+
+function draw(e) {
+    if (!isPainting || !isDrawingMode) return;
+    e.preventDefault();
+
+    const pos = getPos(e);
+
+    // Nếu đã chuyển sang đường thẳng, chỉ cập nhật điểm cuối
+    if (isSnapStraight) {
+        currentStroke.points = [currentStroke.rawPoints[0], pos];
+        redrawCanvas();
+        return;
+    }
+
+    // Luôn ghi lại điểm vẽ nguệch ngoạc
+    currentStroke.rawPoints.push(pos);
+    currentStroke.points.push(pos);
+    redrawCanvas();
+
+    // Đặt lại timer mỗi khi có di chuyển
+    resetHoldTimer();
+}
+
+// Hàm xử lý việc đếm thời gian để giữ và duỗi thẳng đường kẻ
+function resetHoldTimer() {
+    clearTimeout(holdTimer);
+    if (!isPainting || isEraser) return; // Không áp dụng khi dùng tẩy
+
+    holdTimer = setTimeout(() => {
+        if (isPainting && currentStroke && currentStroke.points.length > 2) {
+            isSnapStraight = true;
+            const startPoint = currentStroke.rawPoints[0];
+            const lastPoint = currentStroke.rawPoints[currentStroke.rawPoints.length - 1];
+            
+            // Biến đường vẽ thành 1 đoạn thẳng nối từ điểm đầu đến điểm cuối
+            currentStroke.points = [startPoint, lastPoint];
+            redrawCanvas();
+        }
+    }, 350); // 350ms (khoảng 0.35 giây) giữ yên để biến thành đường thẳng
+}
+
+    canvas.addEventListener('mousedown', startPosition);
+    canvas.addEventListener('mouseup', finishedPosition);
+    canvas.addEventListener('mouseleave', finishedPosition);
+    canvas.addEventListener('mousemove', draw);
+
+    canvas.addEventListener('touchstart', startPosition, { passive: false });
+    canvas.addEventListener('touchend', finishedPosition);
+    canvas.addEventListener('touchmove', draw, { passive: false });
+
+    renderQuiz();
+
+// ========================================================
+// LOGIC KÉO LÊ THANH CÔNG CỤ CỌ VẼ
+// ========================================================
+const toolbar = document.querySelector('.draw-toolbar');
+let isDraggingToolbar = false;
+let startX, startY, initialLeft, initialTop;
+
+function onDragStart(e) {
+    // Không kích hoạt kéo lê nếu người dùng bấm vào nút bấm, ô chọn hoặc chấm màu
+    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT' || e.target.classList.contains('color-dot')) {
+        return;
+    }
+
+    isDraggingToolbar = true;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+    startX = clientX;
+    startY = clientY;
+
+    // Lấy vị trí hiện tại của thanh công cụ
+    const rect = toolbar.getBoundingClientRect();
+    initialLeft = rect.left;
+    initialTop = rect.top;
+
+    // Chuyển vị trí về top/left để tính toán tọa độ chính xác
+    toolbar.style.bottom = 'auto';
+    toolbar.style.left = `${initialLeft}px`;
+    toolbar.style.top = `${initialTop}px`;
+}
+
+function onDragMove(e) {
+    if (!isDraggingToolbar) return;
+    e.preventDefault();
+
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+    const dx = clientX - startX;
+    const dy = clientY - startY;
+
+    toolbar.style.left = `${initialLeft + dx}px`;
+    toolbar.style.top = `${initialTop + dy}px`;
+}
+
+function onDragEnd() {
+    isDraggingToolbar = false;
+}
+
+// Bắt sự kiện trên Máy tính (Mouse)
+toolbar.addEventListener('mousedown', onDragStart);
+window.addEventListener('mousemove', onDragMove);
+window.addEventListener('mouseup', onDragEnd);
+
+// Bắt sự kiện trên Điện thoại / Máy tính bảng (Touch)
+toolbar.addEventListener('touchstart', onDragStart, { passive: false });
+window.addEventListener('touchmove', onDragMove, { passive: false });
+window.addEventListener('touchend', onDragEnd);
+</script>
+
+</body>
+</html>
